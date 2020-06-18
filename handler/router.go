@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,25 +18,32 @@ type OpenWeatherMapData struct {
 	} `json:"main"`
 	Sys struct {
 		Country string `json:"country"`
+		ID      int    `json:"id"`
 	} `json:"sys"`
 }
 
-func InitRouter(r *gin.Engine) {
+func InitRouter() *gin.Engine {
+	r := gin.Default()
+	r.GET("/ping", func(c *gin.Context) {
+		c.String(200, "pong")
+	})
 	r.GET("/temperature/:city", func(c *gin.Context) {
 		city := c.Param("city")
 		data, err := GetWeatherData(city)
 		if err != nil {
 			c.JSON(200, nil)
 		}
+		fmt.Printf("haha: %v", data.Sys.ID)
 		c.JSON(200, data)
 	})
+	return r
 }
 
 func GetWeatherData(cityId string) (OpenWeatherMapData, error) {
 	data := OpenWeatherMapData{}
 
 	API := "a52f1f3ec1f62e44817ceb3e22ce2e03"
-	res, err := http.Get("http://api.openweathermap.org/data/2.5/weather?q="+cityId+"&units=metric&appid=" + API)
+	res, err := http.Get("http://api.openweathermap.org/data/2.5/weather?q=" + cityId + "&units=metric&appid=" + API)
 	if err != nil || res.StatusCode != 200 {
 		return data, err
 	}
