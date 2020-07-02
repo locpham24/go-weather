@@ -3,9 +3,11 @@ package handler
 import (
 	"encoding/json"
 	"errors"
+	"github.com/go-redis/redis"
 	"github.com/jinzhu/gorm"
 	"github.com/locpham24/go-weather/models"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/locpham24/go-weather/db"
@@ -30,16 +32,24 @@ type OpenWeatherMapData struct {
 }
 
 type WeatherHandler struct {
-	DB *gorm.DB
+	DB          *gorm.DB
+	RedisClient *redis.Client
 }
 
 type LocationHandler struct {
-	DB *gorm.DB
+	DB          *gorm.DB
+	RedisClient *redis.Client
 }
 
-func InitRouter(pg *db.PgDb) *gin.Engine {
-	locHandler := LocationHandler{DB: pg.DB}
-	weatherHandler := WeatherHandler{DB: pg.DB}
+func InitRouter(pg *db.PgDb, redis *redis.Client) *gin.Engine {
+	locHandler := LocationHandler{
+		DB:          pg.DB,
+		RedisClient: redis,
+	}
+	weatherHandler := WeatherHandler{
+		DB:          pg.DB,
+		RedisClient: redis,
+	}
 	r := gin.Default()
 	r.GET("/ping", func(c *gin.Context) {
 		c.String(200, "pong")
@@ -52,7 +62,27 @@ func InitRouter(pg *db.PgDb) *gin.Engine {
 
 func (w *WeatherHandler) getWeather(c *gin.Context) {
 	city := c.Param("city")
-	data, err := GetWeatherData(city)
+	data := OpenWeatherMapData{}
+
+	weatherInfo, err := w.RedisClient.Get(city).Result()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	}
+
+	if weatherInfo != "" {
+		err := json.Unmarshal([]byte(weatherInfo), &data)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+	} else {
+		data, err = GetWeatherData(city)
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		}
+		w.RedisClient.Set(city, string(jsonData), 30*time.Second)
+	}
+
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}
@@ -90,6 +120,7 @@ func GetWeatherData(cityId string) (OpenWeatherMapData, error) {
 	}
 	defer res.Body.Close()
 
+	time.Sleep(5 * time.Second)
 	err = json.NewDecoder(res.Body).Decode(&data)
 	if err != nil {
 		return data, err

@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "github.com/jinzhu/gorm/dialects/postgres"
+	"github.com/go-redis/redis"
 	"github.com/locpham24/go-weather/db"
 	"github.com/locpham24/go-weather/handler"
 )
@@ -12,6 +12,12 @@ func main() {
 
 	defer pg.Close()
 
-	router := handler.InitRouter(&pg)
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	router := handler.InitRouter(&pg, redisClient)
 	router.Run(":8080")
 }
